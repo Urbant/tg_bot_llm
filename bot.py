@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
 # 🔐 Токен от BotFather
-API_TOKEN = '8148903087:AAGx4oGHEif3C6Td9CLVzzS6OkbqyrsAMlg'
+API_TOKEN = 'YOUR_ROKEN'
 
 # ⚙️ Настройки Ollama
 OLLAMA_URL = "http://localhost:11434/api/generate"
