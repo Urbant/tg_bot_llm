@@ -3,12 +3,14 @@ import logging
 import re
 import requests
 import html
+import os
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from faster_whisper import WhisperModel
 
 # 🔐 Токен от BotFather
 API_TOKEN = 'YOUR_TOKEN'
@@ -24,7 +26,7 @@ user_histories = defaultdict(list)
 def convert_to_html(text):
     escaped = html.escape(text)
     bolded = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', escaped)
-    bulleted = re.sub(r'^\* ', r'—', bolded, flags=re.MULTILINE)
+    bulleted = re.sub(r'^\* ', r'— ', bolded, flags=re.MULTILINE)
     return bulleted
 
 # 🏗️ Собираем prompt из истории
@@ -40,12 +42,32 @@ def build_prompt(messages, max_tokens=3000):
         prompt = line + prompt
     return prompt + "Assistant: "
 
+# 🤀 Инициализация Whisper
+whisper_model = WhisperModel("base", compute_type="int8_float16")
+
+# 🔹 Обработка голосового сообщения
+async def handle_voice(message: Message, bot: Bot):
+    user_id = message.from_user.id
+    file = await bot.get_file(message.voice.file_id)
+    file_path = f"voice_{user_id}.ogg"
+    await bot.download_file(file.file_path, file_path)
+
+    # Распознавание речи
+    segments, _ = whisper_model.transcribe(file_path)
+    text = " ".join(segment.text for segment in segments).strip()
+    os.remove(file_path)
+
+    if text:
+        await handle_message(types.Message.model_copy(message, update={'text': text}))
+    else:
+        await message.answer("Не удалось распознать речь :(")
+
 # /start — приветствие
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! Я бот, работающий на локальной модели Gemma.\nПросто напиши мне что-нибудь!")
+        "Привет! Я бот, работающий на локальной модели Gemma.\nПросто напиши или надиктуй мне вопрос!")
 
-# Обработка текстовых сообщений
+# 🔹 Текстовые сообщения
 async def handle_message(message: Message):
     user_id = message.from_user.id
     user_input = message.text
@@ -62,7 +84,7 @@ async def handle_message(message: Message):
             "prompt": prompt,
             "stream": False,
             "options": {
-                "num_predict": 200,
+                "num_predict": 400,
                 "temperature": 0.7,
                 "top_k": 40,
                 "top_p": 0.9,
@@ -96,6 +118,7 @@ async def main():
     dp = Dispatcher()
 
     dp.message.register(cmd_start, Command("start"))
+    dp.message.register(handle_voice, lambda msg: msg.voice is not None)
     dp.message.register(handle_message)
 
     await bot.delete_webhook(drop_pending_updates=True)
